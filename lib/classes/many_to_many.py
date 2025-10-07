@@ -1,55 +1,7 @@
-class Article:
-    all = []  
-
-    def __init__(self, author, magazine, title):
-        if not isinstance(author, Author):
-            raise ValueError("Author must be an instance of Author.")
-        if not isinstance(magazine, Magazine):
-            raise ValueError("Magazine must be an instance of Magazine.")
-        if not isinstance(title, str) or not (5 <= len(title) <= 50):
-            raise ValueError("Article title must be a string between 5 and 50 characters.")
-        self._author = author
-        self._magazine = magazine
-        self._title = title
-        magazine.articles().append(self)
-        author.articles().append(self)
-        Article.all.append(self) 
-
-    @property
-    def title(self):
-        return self._title
-
-    @title.setter
-    def title(self, value):
-        pass
-
-    @property
-    def author(self):
-        return self._author
-
-    @author.setter
-    def author(self, value):
-        if not isinstance(value, Author):
-            raise ValueError("Author must be an instance of Author.")
-        self._author = value
-
-    @property
-    def magazine(self):
-        return self._magazine
-
-    @magazine.setter
-    def magazine(self, value):
-        if not isinstance(value, Magazine):
-            raise ValueError("Magazine must be an instance of Magazine.")
-        self._magazine = value
-
-
 class Author:
     def __init__(self, name):
-        if not isinstance(name, str) or len(name) == 0:
-            raise ValueError("Author name must be a non-empty string.")
-        self._name = name
-        self._articles = []
+        self._name = None
+        self.name = name  # use the setter
 
     @property
     def name(self):
@@ -57,34 +9,56 @@ class Author:
 
     @name.setter
     def name(self, value):
-        pass
+        """
+        Allow setting only once. Subsequent attempts are ignored
+        (no AttributeError), matching the tests' expectation.
+        """
+        if self._name is not None:
+            return
+        if isinstance(value, str) and len(value) > 0:
+            self._name = value
 
+    # ---- relationships ----
     def articles(self):
-        return self._articles
+        return [a for a in Article.all if a.author is self]
 
     def magazines(self):
-        return list(set(article.magazine for article in self._articles))
+        mags = [a.magazine for a in self.articles() if a.magazine is not None]
+        seen, unique = set(), []
+        for m in mags:
+            if m not in seen:
+                seen.add(m)
+                unique.append(m)
+        return unique
 
+    # ---- aggregates / helpers ----
     def add_article(self, magazine, title):
-        article = Article(self, magazine, title)
-        return article
+        return Article(self, magazine, title)
 
     def topic_areas(self):
-        if not self._articles:
+        mags = self.magazines()
+        if not mags:
             return None
-        return list(set(magazine.category for magazine in self.magazines()))
-    
+        cats = [m.category for m in mags if isinstance(m.category, str)]
+        seen, unique = set(), []
+        for c in cats:
+            if c not in seen:
+                seen.add(c)
+                unique.append(c)
+        return unique
+
 
 class Magazine:
-    def __init__(self, name, category):
-        if not isinstance(name, str) or not (2 <= len(name) <= 16):
-            raise ValueError("Magazine name must be a string between 2 and 16 characters.")
-        if not isinstance(category, str) or len(category) == 0:
-            raise ValueError("Magazine category must be a non-empty string.")
-        self._name = name
-        self._category = category
-        self._articles = []
+    all = []
 
+    def __init__(self, name, category):
+        self._name = None
+        self._category = None
+        self.name = name
+        self.category = category
+        Magazine.all.append(self)
+
+    # ---- name (mutable, 2..16) ----
     @property
     def name(self):
         return self._name
@@ -94,6 +68,7 @@ class Magazine:
         if isinstance(value, str) and 2 <= len(value) <= 16:
             self._name = value
 
+    # ---- category (mutable, len>0) ----
     @property
     def category(self):
         return self._category
@@ -103,45 +78,92 @@ class Magazine:
         if isinstance(value, str) and len(value) > 0:
             self._category = value
 
+    # ---- relationships ----
     def articles(self):
-        return self._articles
+        return [a for a in Article.all if a.magazine is self]
 
     def contributors(self):
-        return list(set(article.author for article in self._articles))
+        authors = [a.author for a in self.articles() if a.author is not None]
+        seen, unique = set(), []
+        for au in authors:
+            if au not in seen:
+                seen.add(au)
+                unique.append(au)
+        return unique
 
+    # ---- aggregates ----
     def article_titles(self):
-        if not self._articles:
+        arts = self.articles()
+        if not arts:
             return None
-        return [article.title for article in self._articles]
+        return [a.title for a in arts]
 
     def contributing_authors(self):
-        author_counts = {}
-        for article in self._articles:
-            author = article.author
-            if author in author_counts:
-                author_counts[author] += 1
-            else:
-                author_counts[author] = 1
-        contributing_authors = [author for author, count in author_counts.items() if count > 2]
-        return contributing_authors if contributing_authors else None
-    
-# Create authors
-author1 = Author("John Doe")
-author2 = Author("Jane Smith")
+        counts = {}
+        for a in self.articles():
+            au = a.author
+            if au:
+                counts[au] = counts.get(au, 0) + 1
+        result = [au for au, n in counts.items() if n > 2]
+        return result if result else None
 
-# Create magazines
-magazine1 = Magazine("Tech Today", "Technology")
-magazine2 = Magazine("Health Weekly", "Health")
+    # ---- bonus ----
+    @classmethod
+    def top_publisher(cls):
+        if not Article.all:
+            return None
+        counts = {}
+        for a in Article.all:
+            m = a.magazine
+            if m:
+                counts[m] = counts.get(m, 0) + 1
+        if not counts:
+            return None
+        return max(counts, key=counts.get)
 
-# Add articles
-article1 = author1.add_article(magazine1, "The Future of AI")
-article2 = author1.add_article(magazine2, "Healthy Living in the Digital Age")
-article3 = author2.add_article(magazine1, "The Rise of Quantum Computing")
 
-# Test methods
-print(author1.articles())  
-print(author1.magazines()) 
-print(author1.topic_areas())  
+class Article:
+    all = []
 
-print(magazine1.article_titles())  
-print(magazine1.contributing_authors())  
+    def __init__(self, author, magazine, title):
+        self._title = None
+        self._author = None
+        self._magazine = None
+
+        self.title = title
+        self.author = author
+        self.magazine = magazine
+
+        Article.all.append(self)
+
+    # ---- title (immutable, 5..50) ----
+    @property
+    def title(self):
+        return self._title
+
+    @title.setter
+    def title(self, value):
+        if hasattr(self, "_title") and self._title is not None:
+            return
+        if isinstance(value, str) and 5 <= len(value) <= 50:
+            self._title = value
+
+    # ---- author (changeable, type Author) ----
+    @property
+    def author(self):
+        return self._author
+
+    @author.setter
+    def author(self, value):
+        if isinstance(value, Author):
+            self._author = value
+
+    # ---- magazine (changeable, type Magazine) ----
+    @property
+    def magazine(self):
+        return self._magazine
+
+    @magazine.setter
+    def magazine(self, value):
+        if isinstance(value, Magazine):
+            self._magazine = value
